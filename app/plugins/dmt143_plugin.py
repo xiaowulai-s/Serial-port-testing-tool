@@ -45,18 +45,54 @@ class DMT143Plugin(ProtocolPlugin):
         try:
             text = data.decode('ascii', errors='replace').strip()
             
+            result = {
+                'raw_data': text,
+                'parse_steps': []
+            }
+            
+            result['parse_steps'].append(f'步骤1: 接收到原始字节数据: {data.hex()}')
+            result['parse_steps'].append(f'步骤2: 解码为ASCII文本: "{text}"')
+            
             # 检查是否是设备信息响应
             if 'DMT143' in text and 'Serial number' in text:
-                return self._parse_device_info(text)
+                result['parse_steps'].append('步骤3: 识别为设备信息响应')
+                device_info = self._parse_device_info(text)
+                if device_info:
+                    result.update(device_info)
+                    result['parse_steps'].append('步骤4: 设备信息解析成功')
+                return result
             
             # 检查是否是测量数据
             if 'Tdf=' in text and 'H2O=' in text:
-                return self._parse_measurement(text)
+                result['parse_steps'].append('步骤3: 识别为测量数据响应')
+                measurement = self._parse_measurement(text)
+                if measurement:
+                    result.update(measurement)
+                    result['parse_steps'].append('步骤4: 测量数据解析成功')
+                    
+                    # 添加温度单位转换
+                    if 'tdf' in result and result['tdf_unit'] == 'F':
+                        tdf_c = (result['tdf'] - 32) * 5/9
+                        result['tdf_celsius'] = tdf_c
+                        result['parse_steps'].append(f'步骤5: 华氏度转摄氏度: {result["tdf"]}°F → {tdf_c:.2f}°C')
+                    
+                    if 'tdfatm' in result and result['tdfatm_unit'] == 'F':
+                        tdfatm_c = (result['tdfatm'] - 32) * 5/9
+                        result['tdfatm_celsius'] = tdfatm_c
+                        result['parse_steps'].append(f'步骤6: 大气压露点华氏度转摄氏度: {result["tdfatm"]}°F → {tdfatm_c:.2f}°C')
+                
+                return result
             
             # 检查是否是命令响应
             if ':' in text and not 'Tdf=' in text:
-                return self._parse_command_response(text)
+                result['parse_steps'].append('步骤3: 识别为命令响应')
+                cmd_resp = self._parse_command_response(text)
+                if cmd_resp:
+                    result.update(cmd_resp)
+                    result['parse_steps'].append('步骤4: 命令响应解析成功')
+                return result
             
+            result['parse_steps'].append('步骤3: 无法识别数据类型')
             return None
             
         except Exception as e:
@@ -124,23 +160,37 @@ class DMT143Plugin(ProtocolPlugin):
         if not parsed_data:
             return ""
         
+        display_text = ""
+        
+        if 'parse_steps' in parsed_data:
+            display_text += "📝 解析过程:\n"
+            for step in parsed_data['parse_steps']:
+                display_text += f"   {step}\n"
+            display_text += "\n"
+        
         data_type = parsed_data.get('type', '')
         
         if data_type == 'measurement':
             if 'tdf' in parsed_data:
-                return (
+                display_text += (
                     f"📊 测量数据:\n"
                     f"   露点温度: {parsed_data['tdf']:.2f} °{parsed_data['tdf_unit']}\n"
-                    f"   大气压露点: {parsed_data['tdfatm']:.2f} °{parsed_data['tdfatm_unit']}\n"
-                    f"   湿度: {parsed_data['h2o']:.0f} ppm\n"
-                    f"{'='*50}\n"
                 )
+                if 'tdf_celsius' in parsed_data:
+                    display_text += f"   露点(转换): {parsed_data['tdf_celsius']:.2f} °C\n"
+                
+                display_text += f"   大气压露点: {parsed_data['tdfatm']:.2f} °{parsed_data['tdfatm_unit']}\n"
+                if 'tdfatm_celsius' in parsed_data:
+                    display_text += f"   大气压露点(转换): {parsed_data['tdfatm_celsius']:.2f} °C\n"
+                
+                display_text += f"   湿度: {parsed_data['h2o']:.0f} ppm\n"
+                display_text += f"{'='*50}\n"
             else:
-                return f"📊 测量数据: {parsed_data.get('raw', '')}\n"
+                display_text += f"📊 测量数据: {parsed_data.get('raw', '')}\n"
         
         elif data_type == 'device_info':
             if 'version' in parsed_data:
-                return (
+                display_text += (
                     f"🔧 设备信息:\n"
                     f"   型号: {parsed_data['model']}\n"
                     f"   版本: {parsed_data['version']}\n"
@@ -151,19 +201,18 @@ class DMT143Plugin(ProtocolPlugin):
                     f"{'='*50}\n"
                 )
             else:
-                return f"🔧 设备信息:\n{parsed_data.get('raw', '')}\n{'='*50}\n"
+                display_text += f"🔧 设备信息:\n{parsed_data.get('raw', '')}\n{'='*50}\n"
         
         elif data_type == 'command_response':
             if 'responses' in parsed_data:
-                result = "📋 命令响应:\n"
+                display_text += "📋 命令响应:\n"
                 for resp in parsed_data['responses']:
-                    result += f"   {resp['key']}: {resp['value']}\n"
-                result += f"{'='*50}\n"
-                return result
+                    display_text += f"   {resp['key']}: {resp['value']}\n"
+                display_text += f"{'='*50}\n"
             else:
-                return f"📋 命令响应:\n{parsed_data.get('raw', '')}\n{'='*50}\n"
+                display_text += f"📋 命令响应:\n{parsed_data.get('raw', '')}\n{'='*50}\n"
         
-        return ""
+        return display_text
     
     def encode(self, data: Any) -> Optional[bytes]:
         """

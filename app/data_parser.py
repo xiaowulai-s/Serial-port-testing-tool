@@ -175,6 +175,21 @@ class DataParser(QObject):
                 return formatted
         return None
     
+    def parse_data_raw(self, data: bytes) -> Optional[Any]:
+        """
+        解析数据并返回原始解析结果
+        
+        Args:
+            data: 原始字节数据
+            
+        Returns:
+            原始解析结果，如果无法解析返回 None
+        """
+        if self.active_plugin and self.active_plugin in self.plugins:
+            plugin = self.plugins[self.active_plugin]
+            return plugin.parse(data)
+        return None
+    
     def encode_data(self, data: Union[str, Any]) -> Optional[bytes]:
         """
         编码数据为字节序列

@@ -167,6 +167,8 @@ class HomeInterface(QWidget):
         
         self.quick_commands = []
         
+        self.latest_parsed_data = None
+        
         self.init_ui()
         self.connect_signals()
         self.refresh_ports()
@@ -306,26 +308,30 @@ class HomeInterface(QWidget):
         transceiver_group = QGroupBox('数据收发')
         transceiver_layout = QVBoxLayout(transceiver_group)
         transceiver_layout.setSpacing(10)
-
+        
+        content_layout = QHBoxLayout()
+        
+        left_panel = QVBoxLayout()
+        
         receive_label = QLabel('接收区')
         font = receive_label.font()
         font.setBold(True)
         receive_label.setFont(font)
-        transceiver_layout.addWidget(receive_label)
+        left_panel.addWidget(receive_label)
 
         self.receive_text = QTextEdit()
         self.receive_text.setReadOnly(True)
-        transceiver_layout.addWidget(self.receive_text)
+        left_panel.addWidget(self.receive_text)
 
         send_label = QLabel('发送区')
         font = send_label.font()
         font.setBold(True)
         send_label.setFont(font)
-        transceiver_layout.addWidget(send_label)
+        left_panel.addWidget(send_label)
 
         self.send_text = QTextEdit()
         self.send_text.setMaximumHeight(100)
-        transceiver_layout.addWidget(self.send_text)
+        left_panel.addWidget(self.send_text)
 
         send_control_layout = QHBoxLayout()
         self.send_btn = QPushButton('发送')
@@ -343,7 +349,35 @@ class HomeInterface(QWidget):
         send_control_layout.addWidget(self.timer_spin)
 
         send_control_layout.addStretch()
-        transceiver_layout.addLayout(send_control_layout)
+        left_panel.addLayout(send_control_layout)
+        
+        content_layout.addLayout(left_panel, stretch=2)
+        
+        right_panel = QVBoxLayout()
+        parse_label = QLabel('解析数据')
+        font = parse_label.font()
+        font.setBold(True)
+        parse_label.setFont(font)
+        right_panel.addWidget(parse_label)
+        
+        self.parse_text = QTextEdit()
+        self.parse_text.setReadOnly(True)
+        right_panel.addWidget(self.parse_text)
+        
+        realtime_label = QLabel('实时数据')
+        font = realtime_label.font()
+        font.setBold(True)
+        realtime_label.setFont(font)
+        right_panel.addWidget(realtime_label)
+        
+        self.realtime_text = QTextEdit()
+        self.realtime_text.setReadOnly(True)
+        self.realtime_text.setMaximumHeight(200)
+        right_panel.addWidget(self.realtime_text)
+        
+        content_layout.addLayout(right_panel, stretch=1)
+        
+        transceiver_layout.addLayout(content_layout)
 
         parent_layout.addWidget(transceiver_group, stretch=3)
 
@@ -401,13 +435,138 @@ class HomeInterface(QWidget):
 
     def on_data_received(self, data: bytes):
         """接收到数据"""
+        timestamp = datetime.now().strftime('%H:%M:%S.%f')[:-3]
+        
         formatted = self.data_parser.parse_data(data)
         if formatted:
-            self.receive_text.insertPlainText(formatted)
+            self.receive_text.insertPlainText(f'[{timestamp}] {formatted}')
             self.receive_text.verticalScrollBar().setValue(
                 self.receive_text.verticalScrollBar().maximum()
             )
+        
+        parsed_raw = self.data_parser.parse_data_raw(data)
+        if parsed_raw:
+            self.latest_parsed_data = parsed_raw
+            self.update_parse_display(parsed_raw, timestamp)
+            self.update_realtime_display(parsed_raw)
 
+    def update_parse_display(self, parsed_data, timestamp):
+        """更新解析数据显示"""
+        if isinstance(parsed_data, dict):
+            display_text = f'[{timestamp}]\n'
+            display_text += '='*50 + '\n'
+            display_text += '原始数据解析过程:\n'
+            display_text += '='*50 + '\n'
+            
+            data_type = parsed_data.get('type', '')
+            
+            if data_type == 'measurement':
+                display_text += '📊 测量数据解析:\n'
+                display_text += f'   步骤1: 识别为测量数据类型\n'
+                
+                if 'tdf' in parsed_data:
+                    display_text += f'   步骤2: 提取露点温度: {parsed_data["tdf"]}\n'
+                    display_text += f'   步骤3: 提取单位: {parsed_data["tdf_unit"]}\n'
+                
+                if 'tdfatm' in parsed_data:
+                    display_text += f'   步骤4: 提取大气压露点: {parsed_data["tdfatm"]}\n'
+                    display_text += f'   步骤5: 提取单位: {parsed_data["tdfatm_unit"]}\n'
+                
+                if 'h2o' in parsed_data:
+                    display_text += f'   步骤6: 提取湿度: {parsed_data["h2o"]} ppm\n'
+                
+                display_text += '   步骤7: 数据验证完成\n'
+            
+            elif data_type == 'device_info':
+                display_text += '🔧 设备信息解析:\n'
+                display_text += f'   步骤1: 识别为设备信息类型\n'
+                
+                if 'model' in parsed_data:
+                    display_text += f'   步骤2: 提取型号: {parsed_data["model"]}\n'
+                
+                if 'version' in parsed_data:
+                    display_text += f'   步骤3: 提取版本: {parsed_data["version"]}\n'
+                
+                if 'serial_number' in parsed_data:
+                    display_text += f'   步骤4: 提取序列号: {parsed_data["serial_number"]}\n'
+                
+                display_text += '   步骤5: 数据验证完成\n'
+            
+            elif data_type == 'command_response':
+                display_text += '📋 命令响应解析:\n'
+                display_text += f'   步骤1: 识别为命令响应类型\n'
+                
+                if 'responses' in parsed_data:
+                    display_text += f'   步骤2: 找到 {len(parsed_data["responses"])} 个响应项\n'
+                    for i, resp in enumerate(parsed_data['responses']):
+                        display_text += f'   步骤{i+3}: 提取 "{resp["key"]}": {resp["value"]}\n'
+                
+                display_text += '   步骤完成\n'
+            
+            display_text += '='*50 + '\n\n'
+            self.parse_text.insertPlainText(display_text)
+            self.parse_text.verticalScrollBar().setValue(
+                self.parse_text.verticalScrollBar().maximum()
+            )
+    
+    def update_realtime_display(self, parsed_data):
+        """更新实时数据显示"""
+        if isinstance(parsed_data, dict):
+            data_type = parsed_data.get('type', '')
+            display_text = ''
+            
+            if data_type == 'measurement':
+                display_text += '📊 实时测量数据\n'
+                display_text += '─'*30 + '\n'
+                
+                if 'tdf' in parsed_data:
+                    display_text += f'露点温度: {parsed_data["tdf"]:.2f} °{parsed_data["tdf_unit"]}\n'
+                
+                if 'tdfatm' in parsed_data:
+                    display_text += f'大气压露点: {parsed_data["tdfatm"]:.2f} °{parsed_data["tdfatm_unit"]}\n'
+                
+                if 'h2o' in parsed_data:
+                    display_text += f'湿度: {parsed_data["h2o"]:.0f} ppm\n'
+                
+                if 'tdf' in parsed_data and parsed_data['tdf_unit'] == 'F':
+                    tdf_c = (parsed_data['tdf'] - 32) * 5/9
+                    display_text += f'露点(转换): {tdf_c:.2f} °C\n'
+                
+                if 'tdfatm' in parsed_data and parsed_data['tdfatm_unit'] == 'F':
+                    tdfatm_c = (parsed_data['tdfatm'] - 32) * 5/9
+                    display_text += f'大气压露点(转换): {tdfatm_c:.2f} °C\n'
+            
+            elif data_type == 'device_info':
+                display_text += '🔧 设备信息\n'
+                display_text += '─'*30 + '\n'
+                
+                if 'model' in parsed_data:
+                    display_text += f'型号: {parsed_data["model"]}\n'
+                
+                if 'version' in parsed_data:
+                    display_text += f'版本: {parsed_data["version"]}\n'
+                
+                if 'serial_number' in parsed_data:
+                    display_text += f'序列号: {parsed_data["serial_number"]}\n'
+                
+                if 'sensor_model' in parsed_data:
+                    display_text += f'传感器型号: {parsed_data["sensor_model"]}\n'
+                
+                if 'cal_date' in parsed_data:
+                    display_text += f'校准日期: {parsed_data["cal_date"]}\n'
+            
+            elif data_type == 'command_response':
+                display_text += '📋 命令响应\n'
+                display_text += '─'*30 + '\n'
+                
+                if 'responses' in parsed_data:
+                    for resp in parsed_data['responses']:
+                        display_text += f'{resp["key"]}: {resp["value"]}\n'
+            
+            if display_text:
+                self.realtime_text.clear()
+                self.realtime_text.setPlainText(display_text)
+    
     def on_error(self, error_msg: str):
         """错误处理"""
         self.show_message('错误', error_msg, 'error')
