@@ -10,6 +10,7 @@ from PyQt5.QtGui import QPainter, QColor, QBrush, QFont
 from app.serial_manager import SerialManager, SerialConfig
 from app.data_parser import DataParser
 from app.plugins.modbus_plugin import ModbusPlugin
+from app.plugins.dmt143_plugin import DMT143Plugin
 
 
 class StatusDot(QWidget):
@@ -154,6 +155,7 @@ class HomeInterface(QWidget):
         self.serial_manager = SerialManager(self)
         self.data_parser = DataParser(self)
         self.data_parser.register_plugin(ModbusPlugin())
+        self.data_parser.register_plugin(DMT143Plugin())
         
         self.timer = QTimer()
         self.timer.timeout.connect(self.send_periodic_data)

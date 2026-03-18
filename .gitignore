@@ -1,3 +1,9 @@
+# 临时文件
+read_pdf.py
+read_pdf2.py
+read_pdf3.py
+search_pdf.py
+
 # Python
 __pycache__/
 *.py[cod]
