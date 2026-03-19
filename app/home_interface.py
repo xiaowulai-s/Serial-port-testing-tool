@@ -439,7 +439,7 @@ class HomeInterface(QWidget):
         
         formatted = self.data_parser.parse_data(data)
         if formatted:
-            self.receive_text.insertPlainText(f'[{timestamp}] {formatted}')
+            self.receive_text.insertPlainText(f'[{timestamp}] {formatted}\n')
             self.receive_text.verticalScrollBar().setValue(
                 self.receive_text.verticalScrollBar().maximum()
             )
@@ -562,6 +562,17 @@ class HomeInterface(QWidget):
                 if 'responses' in parsed_data:
                     for resp in parsed_data['responses']:
                         display_text += f'{resp["key"]}: {resp["value"]}\n'
+            
+            elif data_type == 'raw':
+                display_text += '📄 原始数据\n'
+                display_text += '─'*30 + '\n'
+                display_text += f'{parsed_data.get("raw_data", "")}\n'
+            
+            elif data_type == 'error':
+                display_text += '❌ 解析错误\n'
+                display_text += '─'*30 + '\n'
+                display_text += f'错误: {parsed_data.get("error", "")}\n'
+                display_text += f'原始数据: {parsed_data.get("raw_data", "")}\n'
             
             if display_text:
                 self.realtime_text.clear()

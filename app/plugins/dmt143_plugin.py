@@ -53,8 +53,12 @@ class DMT143Plugin(ProtocolPlugin):
             result['parse_steps'].append(f'步骤1: 接收到原始字节数据: {data.hex()}')
             result['parse_steps'].append(f'步骤2: 解码为ASCII文本: "{text}"')
             
+            if not text:
+                result['parse_steps'].append('步骤3: 文本为空，跳过解析')
+                return None
+            
             # 检查是否是设备信息响应
-            if 'DMT143' in text and 'Serial number' in text:
+            if 'DMT143' in text or 'Serial number' in text:
                 result['parse_steps'].append('步骤3: 识别为设备信息响应')
                 device_info = self._parse_device_info(text)
                 if device_info:
@@ -63,7 +67,7 @@ class DMT143Plugin(ProtocolPlugin):
                 return result
             
             # 检查是否是测量数据
-            if 'Tdf=' in text and 'H2O=' in text:
+            if 'Tdf=' in text or 'H2O=' in text:
                 result['parse_steps'].append('步骤3: 识别为测量数据响应')
                 measurement = self._parse_measurement(text)
                 if measurement:
@@ -84,7 +88,7 @@ class DMT143Plugin(ProtocolPlugin):
                 return result
             
             # 检查是否是命令响应
-            if ':' in text and not 'Tdf=' in text:
+            if ':' in text:
                 result['parse_steps'].append('步骤3: 识别为命令响应')
                 cmd_resp = self._parse_command_response(text)
                 if cmd_resp:
@@ -92,11 +96,13 @@ class DMT143Plugin(ProtocolPlugin):
                     result['parse_steps'].append('步骤4: 命令响应解析成功')
                 return result
             
-            result['parse_steps'].append('步骤3: 无法识别数据类型')
-            return None
+            # 如果都不匹配，返回原始数据类型
+            result['parse_steps'].append('步骤3: 无法识别特定数据类型，返回原始数据')
+            result['type'] = 'raw'
+            return result
             
         except Exception as e:
-            return None
+            return {'type': 'error', 'error': str(e), 'raw_data': data.hex()}
     
     def _parse_device_info(self, text: str) -> Optional[Dict[str, Any]]:
         """解析设备信息"""
@@ -158,7 +164,7 @@ class DMT143Plugin(ProtocolPlugin):
             格式化后的显示字符串
         """
         if not parsed_data:
-            return ""
+            return "\n"
         
         display_text = ""
         
@@ -212,7 +218,18 @@ class DMT143Plugin(ProtocolPlugin):
             else:
                 display_text += f"📋 命令响应:\n{parsed_data.get('raw', '')}\n{'='*50}\n"
         
-        return display_text
+        elif data_type == 'raw':
+            display_text += f"📄 原始数据:\n"
+            display_text += f"   {parsed_data.get('raw_data', '')}\n"
+            display_text += f"{'='*50}\n"
+        
+        elif data_type == 'error':
+            display_text += f"❌ 解析错误:\n"
+            display_text += f"   {parsed_data.get('error', '')}\n"
+            display_text += f"   原始数据: {parsed_data.get('raw_data', '')}\n"
+            display_text += f"{'='*50}\n"
+        
+        return display_text + "\n"
     
     def encode(self, data: Any) -> Optional[bytes]:
         """
